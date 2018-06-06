@@ -31,6 +31,11 @@ Then if everything runned smoothly you should have a binary
 To run it, just type
 
 ```bash
+chmod +x makecert.sh
+./makecert.sh joe@random.com
+```
+
+```bash
 ./client
 ```
 
