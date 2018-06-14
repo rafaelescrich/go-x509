@@ -18,7 +18,7 @@ A step by step series of examples that tell you have to get a development env ru
 Clone the project
 
 ```bash
-git clone git@github.com:rafaelescrich/go-x509.git 
+git clone git@github.com:rafaelescrich/go-x509.git
 cd $GOPATH/src/github.com/rafaelescrich/go-x509
 ```
 
