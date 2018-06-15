@@ -50,8 +50,9 @@ import (
 	"os"
 )
 
-func main() {
-	addr := "localhost:8000"
+// InitClient initializes the client
+func InitClient(port string) {
+	addr := "localhost:" + port
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		println("Dial failed:", err.Error())

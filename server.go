@@ -89,7 +89,7 @@ func handleConnection(conn net.Conn) {
 				return
 			}
 			if n > 0 {
-				fmt.Println("unexpected data: %s", buf[:n])
+				fmt.Printf("unexpected data: %x", buf[:n])
 			}
 		}
 	}()
@@ -107,8 +107,9 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func main() {
-	listen, err := net.Listen("tcp4", ":8000")
+// InitServer initalizes the server
+func InitServer(port string) {
+	listen, err := net.Listen("tcp4", ":"+port)
 	defer listen.Close()
 	if err != nil {
 		log.Fatalf("Socket listen port %s failed,%s", "8000", err)
