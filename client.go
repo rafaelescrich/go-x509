@@ -52,6 +52,11 @@ import (
 
 // InitClient initializes the client
 func InitClient(port string) {
+
+	// read from file the client's private key
+
+	// read from pem the server's public key
+
 	addr := "localhost:" + port
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {

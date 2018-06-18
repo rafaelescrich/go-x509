@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 )
 
 func main() {
@@ -19,6 +20,7 @@ func main() {
 	} else if *client {
 		InitClient(*port)
 	} else {
-		fmt.Printf("You must enter server or client option")
+		fmt.Println("You must enter server or client option")
+		os.Exit(1)
 	}
 }
