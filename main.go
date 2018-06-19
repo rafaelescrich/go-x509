@@ -1,24 +1,26 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
+
+	"github.com/simonleung8/flags"
 )
 
 func main() {
+	fc := flags.New()
+	fc.NewStringFlagWithDefault("port", "p", "flag for port number", "8000")
+	fc.NewStringFlag("gen-keys", "g", "flag for generate new keys")
+	fc.NewBoolFlag("server", "s", "initializes software in server mode")
+	fc.NewBoolFlag("client", "c", "initializes software in client mode")
+	fc.Parse(os.Args...)
 
-	port := flag.String("p", "8000", "a string")
-	server := flag.Bool("s", false, "a bool")
-	client := flag.Bool("c", false, "a bool")
-	// Once all flags are declared, call `flag.Parse()`
-	// to execute the command-line parsing.
-	flag.Parse()
-
-	if *server {
-		InitServer(*port)
-	} else if *client {
-		InitClient(*port)
+	if fc.IsSet("s") {
+		InitServer(fc.String("p"))
+	} else if fc.IsSet("c") {
+		InitClient(fc.String("p"))
+	} else if fc.IsSet("g") {
+		genKeys(fc.String("g"))
 	} else {
 		fmt.Println("You must enter server or client option")
 		os.Exit(1)

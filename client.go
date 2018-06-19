@@ -45,6 +45,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -53,9 +54,8 @@ import (
 // InitClient initializes the client
 func InitClient(port string) {
 
-	// read from file the client's private key
-
-	// read from pem the server's public key
+	clientKP, _ := readKeyPair("client")
+	fmt.Printf(string(clientKP.publicKey))
 
 	addr := "localhost:" + port
 	conn, err := net.Dial("tcp", addr)
