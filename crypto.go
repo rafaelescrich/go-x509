@@ -23,6 +23,15 @@ type KeyPair struct {
 // Salt is hardcoded
 const Salt = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 
+// Nonce returns new nonce
+func Nonce() []byte {
+	nonce := make([]byte, 12)
+	if _, err := rand.Read(nonce); err != nil {
+		panic(err.Error())
+	}
+	return nonce
+}
+
 // GenerateMasterKey is the method to generate a key from the salt and
 // password
 func GenerateMasterKey(password string) []byte {
