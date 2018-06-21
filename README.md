@@ -28,10 +28,17 @@ Build binary with make tool
 make all
 ```
 
+Create the directory of the certificates
+
+```bash
+mkdir certs
+```
+
 After we have a binary, we must first generate our keys
 
 ```bash
-./go-x509 gen-keys
+./go-x509 -g server
+./go-x509 -g client
 ```
 
 Then if everything runned smoothly you should have a binary

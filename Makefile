@@ -20,7 +20,7 @@ run:
 		$(GOBUILD) -o $(BINARY_NAME) -v ./...
 		./$(BINARY_NAME)
 deps:
-		# $(GOGET) github.com/
+		$(GOGET) github.com/simonleung8/flags
 
 # Cross compilation
 build-linux:
