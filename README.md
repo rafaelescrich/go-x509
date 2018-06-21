@@ -25,22 +25,26 @@ cd $GOPATH/src/github.com/rafaelescrich/go-x509
 Build binary with make tool
 
 ```bash
-make
+make all
 ```
+
+After we have a binary, we must first generate our keys
+
+```bash
+./go-x509 gen-keys
+```
+
 Then if everything runned smoothly you should have a binary
-To run it, just type
+To run it in server mode, just type
 
 ```bash
-chmod +x makecert.sh
-./makecert.sh joe@random.com
+./go-x509 -s -p 8000
 ```
 
-```bash
-./client
-```
+Now we need to run the client
 
 ```bash
-./server
+./go-x509 -c -p 8000
 ```
 
 ## Running the tests
