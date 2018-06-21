@@ -2,17 +2,24 @@ package main
 
 import (
 	"bufio"
+	"crypto/rsa"
 	"encoding/gob"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 )
+
+var publicClientKey *rsa.PublicKey
+var sessionKey []byte
+var serverKP KeyPair
 
 // HandleFunc is a function that handles an incoming command.
 type HandleFunc func(*bufio.ReadWriter)
@@ -124,7 +131,7 @@ func handleStrings(rw *bufio.ReadWriter) {
 // handleGob handles the "GOB" request. It decodes the received GOB data
 // into a struct.
 func handleGob(rw *bufio.ReadWriter) {
-	log.Print("Receive GOB data:")
+	log.Print("Receive Protocol data:")
 	var data Protocol
 	// Create a decoder that decodes directly into a struct variable.
 	dec := gob.NewDecoder(rw)
@@ -133,21 +140,65 @@ func handleGob(rw *bufio.ReadWriter) {
 		log.Println("Error decoding GOB data:", err)
 		return
 	}
-	// Print the complexData struct and the nested one, too, to prove
-	// that both travelled across the wire.
+
+	// // Print the complexData struct and the nested one, too, to prove
+	// // that both travelled across the wire.
 	log.Printf("Outer complexData struct: \n%#v\n", data)
+
+	// Replying message
+	na := data.Nonce
+	msg := append(data.Nonce, data.Timestamp...)
+	msg = append(msg, data.CipheredSessionKey...)
+	err = VerifySig(msg, data.SignedMsg, publicClientKey)
+	if err != nil {
+		log.Println("Error verifying message:", err)
+		return
+	}
+	sessionKey, err = DecryptPrivKey(data.CipheredSessionKey, serverKP.privateKey)
+	// Now we can reply
+	nb := Nonce()
+	tb := time.Now().Format(time.RFC850)
+	sSK, err := EncryptPubKey(sessionKey, publicClientKey)
+
+	resp := append(nb, tb...)
+	resp = append(msg, sSK...)
+
+	sm, err := Sign(resp, serverKP.privateKey)
+	if err != nil {
+		fmt.Println(err)
+	}
+	reply := Reply{
+		NonceB:             nb,
+		NonceA:             na,
+		TimestampB:         tb,
+		CipheredSessionKey: sSK,
+		SignedMsg:          sm,
+	}
+	enc := gob.NewEncoder(rw)
+	n, err := rw.WriteString("GOB\n")
+	if err != nil {
+		fmt.Println(err, "Could not write GOB data ("+strconv.Itoa(n)+" bytes written)")
+	}
+	err = enc.Encode(reply)
+	if err != nil {
+		fmt.Println(err, "Encode failed for struct: %#v", reply)
+	}
+	err = rw.Flush()
+	if err != nil {
+		fmt.Println(err, "Flush failed.")
+	}
 }
 
 // InitServer initalizes the server
 func InitServer(port string) {
 
-	_, _ = readKeyPair("server")
+	publicClientKey = new(rsa.PublicKey)
+	publicClientKey.N = big.NewInt(0)
+	publicClientKey.N.SetBytes([]byte("29439234235147834624400106512350547158011030442832601322153468696324894192687132514357408532936147318236762955403181573699071216172231455769712275184435320099154582974822642760501066771874468050439146958798642517591941662554845991426625213455717261854031816578015209820463429808070353329037406237874208798850018644138706527756636302935154226853894506677547248237440150967630363864947704469855899873459413047449535629575893869062764724732809870070228795939455341871885281507205679866762058558155480584542658591248464177314020994728543478969515862596440757390666404159966689110277124077529957124797448578029298193299009"))
+	publicClientKey.E = 65537
+	fmt.Println(publicClientKey.N)
 
-	// nb := Nonce()
-
-	tb := time.Now().Format(time.RFC850)
-	fmt.Println(tb)
-	fmt.Println(port)
+	serverKP, _ = readKeyPair("server")
 
 	endpoint := NewEndpoint()
 

@@ -18,9 +18,17 @@ import (
 
 // Protocol defines the types of data to communicate
 type Protocol struct {
-	Nonce     []byte
-	Timestamp string
-	// SessionKey         []byte
+	Nonce              []byte
+	Timestamp          string
+	CipheredSessionKey []byte
+	SignedMsg          []byte
+}
+
+// Reply defines the response
+type Reply struct {
+	TimestampB         string
+	NonceB             []byte
+	NonceA             []byte
 	CipheredSessionKey []byte
 	SignedMsg          []byte
 }
@@ -185,16 +193,22 @@ func EncryptPubKey(msg []byte, pubKey *rsa.PublicKey) ([]byte, error) {
 	return enc, err
 }
 
+// DecryptPrivKey decrypts message
+func DecryptPrivKey(ciphertext []byte, priv *rsa.PrivateKey) ([]byte, error) {
+	var msg []byte
+	rng := rand.Reader
+	msg, err := rsa.DecryptPKCS1v15(rng, priv, ciphertext)
+	if err != nil {
+		fmt.Printf("err: %s\n", err)
+	}
+	return msg, err
+}
+
 // Sign a message
 func Sign(msg []byte, privKey *rsa.PrivateKey) ([]byte, error) {
 	var signature []byte
 	rng := rand.Reader
 
-	// Only small messages can be signed directly; thus the hash of a
-	// message, rather than the message itself, is signed. This requires
-	// that the hash function be collision resistant. SHA-256 is the
-	// least-strong hash function that should be used for this at the time
-	// of writing (2016).
 	hashed := sha256.Sum256(msg)
 
 	signature, err := rsa.SignPKCS1v15(rng, privKey, crypto.SHA256, hashed[:])
@@ -206,20 +220,14 @@ func Sign(msg []byte, privKey *rsa.PrivateKey) ([]byte, error) {
 	return signature, nil
 }
 
-// func VerifySig() {
-// 	message := []byte("message to be signed")
-// 	signature, _ := hex.DecodeString("ad2766728615cc7a746cc553916380ca7bfa4f8983b990913bc69eb0556539a350ff0f8fe65ddfd3ebe91fe1c299c2fac135bc8c61e26be44ee259f2f80c1530")
+// VerifySig verifies a signature
+func VerifySig(msg []byte, signature []byte, pubKey *rsa.PublicKey) error {
+	hashed := sha256.Sum256(msg)
 
-// 	// Only small messages can be signed directly; thus the hash of a
-// 	// message, rather than the message itself, is signed. This requires
-// 	// that the hash function be collision resistant. SHA-256 is the
-// 	// least-strong hash function that should be used for this at the time
-// 	// of writing (2016).
-// 	hashed := sha256.Sum256(message)
-
-// 	err := rsa.VerifyPKCS1v15(&rsaPrivateKey.PublicKey, crypto.SHA256, hashed[:], signature)
-// 	if err != nil {
-// 		fmt.Fprintf(os.Stderr, "Error from verification: %s\n", err)
-// 		return
-// 	}
-// }
+	err := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashed[:], signature)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from verification: %s\n", err)
+		return err
+	}
+	return nil
+}
