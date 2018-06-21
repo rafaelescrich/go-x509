@@ -2,17 +2,28 @@ package main
 
 import (
 	"bufio"
-	"crypto/ecdsa"
+	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math/big"
 	"os"
 
 	"github.com/golang/crypto/argon2"
 )
+
+// Protocol defines the types of data to communicate
+type Protocol struct {
+	Nonce     []byte
+	Timestamp string
+	// SessionKey         []byte
+	CipheredSessionKey []byte
+	SignedMsg          []byte
+}
 
 // KeyPair is the public and private key pair
 type KeyPair struct {
@@ -23,6 +34,18 @@ type KeyPair struct {
 // Salt is hardcoded
 const Salt = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 
+// GenerateMasterKey is the method to generate a key from the salt and
+// password
+func GenerateMasterKey(password []byte) []byte {
+	// The draft RFC recommends time=3, and memory=32*1024
+	// is a sensible number. If using that amount of memory (32 MB) is
+	// not possible in some contexts then the time parameter can be increased
+	//  to compensate.
+	// Key(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32)
+	return argon2.Key(password, []byte(Salt), 3, 32*1024, 4, 32)
+
+}
+
 // Nonce returns new nonce
 func Nonce() []byte {
 	nonce := make([]byte, 12)
@@ -32,16 +55,43 @@ func Nonce() []byte {
 	return nonce
 }
 
-// GenerateMasterKey is the method to generate a key from the salt and
-// password
-func GenerateMasterKey(password string) []byte {
-	// The draft RFC recommends time=3, and memory=32*1024
-	// is a sensible number. If using that amount of memory (32 MB) is
-	// not possible in some contexts then the time parameter can be increased
-	//  to compensate.
-	// Key(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32)
-	return argon2.Key([]byte(password), []byte(Salt), 3, 32*1024, 4, 32)
+// EncryptAESGCM encrypt plaintext with the mk
+func EncryptAESGCM(key []byte, nonce []byte, plaintext []byte) ([]byte, error) {
+	var ciphertext []byte
 
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return ciphertext, err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return ciphertext, err
+	}
+
+	ciphertext = aesgcm.Seal(nil, nonce, plaintext, nil)
+	return ciphertext, nil
+}
+
+// DecryptAESGCM decrypts a ciphertext with a key
+func DecryptAESGCM(key []byte, nonce []byte, ciphertext []byte) ([]byte, error) {
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
 }
 
 func genKeys(filename string) {
@@ -124,30 +174,52 @@ func readPubKey(from string) {
 	fmt.Printf("This is the "+from+" public key: %x\n", rsaPublicKey.N)
 }
 
-func pkSign(hash []byte, privkbytes []byte) (r, s *big.Int, err error) {
-	zero := big.NewInt(0)
-	privkey, err := x509.ParseECPrivateKey(privkbytes)
+// EncryptPubKey encrypt message with public key
+func EncryptPubKey(msg []byte, pubKey *rsa.PublicKey) ([]byte, error) {
+	var enc []byte
+	rng := rand.Reader
+	enc, err := rsa.EncryptPKCS1v15(rng, pubKey, msg)
 	if err != nil {
-		return zero, zero, err
+		fmt.Printf("err: %s\n", err)
 	}
-
-	r, s, err = ecdsa.Sign(rand.Reader, privkey, hash)
-	if err != nil {
-		return zero, zero, err
-	}
-	return r, s, nil
+	return enc, err
 }
 
-func pkVerify(hash []byte, pubkbytes []byte, r *big.Int, s *big.Int) (result bool) {
-	pubk, err := x509.ParsePKIXPublicKey(pubkbytes)
-	if err != nil {
-		return false
-	}
+// Sign a message
+func Sign(msg []byte, privKey *rsa.PrivateKey) ([]byte, error) {
+	var signature []byte
+	rng := rand.Reader
 
-	switch pubk := pubk.(type) {
-	case *ecdsa.PublicKey:
-		return ecdsa.Verify(pubk, hash, r, s)
-	default:
-		return false
+	// Only small messages can be signed directly; thus the hash of a
+	// message, rather than the message itself, is signed. This requires
+	// that the hash function be collision resistant. SHA-256 is the
+	// least-strong hash function that should be used for this at the time
+	// of writing (2016).
+	hashed := sha256.Sum256(msg)
+
+	signature, err := rsa.SignPKCS1v15(rng, privKey, crypto.SHA256, hashed[:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from signing: %s\n", err)
+		return signature, err
 	}
+	fmt.Printf("Signature: %x\n", signature)
+	return signature, nil
 }
+
+// func VerifySig() {
+// 	message := []byte("message to be signed")
+// 	signature, _ := hex.DecodeString("ad2766728615cc7a746cc553916380ca7bfa4f8983b990913bc69eb0556539a350ff0f8fe65ddfd3ebe91fe1c299c2fac135bc8c61e26be44ee259f2f80c1530")
+
+// 	// Only small messages can be signed directly; thus the hash of a
+// 	// message, rather than the message itself, is signed. This requires
+// 	// that the hash function be collision resistant. SHA-256 is the
+// 	// least-strong hash function that should be used for this at the time
+// 	// of writing (2016).
+// 	hashed := sha256.Sum256(message)
+
+// 	err := rsa.VerifyPKCS1v15(&rsaPrivateKey.PublicKey, crypto.SHA256, hashed[:], signature)
+// 	if err != nil {
+// 		fmt.Fprintf(os.Stderr, "Error from verification: %s\n", err)
+// 		return
+// 	}
+// }

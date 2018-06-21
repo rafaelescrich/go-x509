@@ -1,36 +1,124 @@
 package main
 
 import (
+	"bufio"
+	"crypto/rsa"
+	"encoding/gob"
 	"fmt"
 	"log"
+	"math/big"
 	"net"
 	"os"
+	"strconv"
 	"time"
+
+	"github.com/pkg/errors"
 )
+
+// Open a connection to a listening server
+func Open(addr string) (*bufio.ReadWriter, error) {
+
+	log.Println("Dial " + addr)
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, errors.Wrap(err, "Dialing "+addr+" failed")
+	}
+	return bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
+}
 
 // InitClient initializes the client
 func InitClient(port string) {
 
-	_, _ = readKeyPair("client")
-
 	na := Nonce()
 
 	ta := time.Now().Format(time.RFC850)
-	fmt.Println(ta)
+
+	publicServerKey := new(rsa.PublicKey)
+	publicServerKey.N = big.NewInt(0)
+	publicServerKey.N.SetBytes([]byte("25051951314883923742917198599529893300770518822415211040991740181632958960962635078102875145607825968301915170902286354113671683016267722874229586470863762841128785490324207250806021365714673967692587295217586223182246350596856570245398605001881889738202791572639458781465096571800834170496806213181467221238557421074289617717044191701133749784730601791755859685341464781226429030426262337766566507887258578986832662340005054608773498915680887555688337820331951717998363693120373895850380432254423060642025902405330940080700898045904675145999350668552583934370139984494401758998971809529970529308560476801938964941467"))
+	publicServerKey.E = 65537
+	fmt.Println(publicServerKey.N)
+
+	// Encrypt the data
+	// out, err := rsa.EncryptPKCS1v15(rand.Reader, publicServerKey, in)
+	// func EncryptPKCS1v15(rand io.Reader, pub *PublicKey, msg []byte) ([]byte, error)
+	// if err != nil {
+	// 	log.Fatalf("decrypt: %s", err)
+	// }
+
+	sessionKey := GenerateMasterKey(na)
+	cSK, err := EncryptPubKey(sessionKey, publicServerKey)
+
+	clientKP, err := readKeyPair("client")
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	msg := append(na, ta...)
+	msg = append(msg, cSK...)
+
+	sm, err := Sign(msg, clientKP.privateKey)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	testStruct := Protocol{
+		Nonce:              na,
+		Timestamp:          ta,
+		CipheredSessionKey: cSK,
+		SignedMsg:          sm,
+	}
 
 	addr := "localhost:" + port
-	conn, err := net.Dial("tcp", addr)
+
+	// Open a connection to the server.
+	rw, err := Open(addr)
 	if err != nil {
 		println("Dial failed:", err.Error())
 		os.Exit(1)
 	}
-	defer conn.Close()
 
-	conn.Write(n1)
-	conn.Write([]byte("EOF"))
-	log.Printf("Send: %x", na)
+	log.Println("Send the string request.")
+	n, err := rw.WriteString("STRING\n")
+	if err != nil {
+		fmt.Println(err, "Could not send the STRING request ("+strconv.Itoa(n)+" bytes written)")
+	}
+	n, err = rw.WriteString("Additional data.\n")
+	if err != nil {
+		fmt.Println(err, "Could not send additional STRING data ("+strconv.Itoa(n)+" bytes written)")
+	}
+	log.Println("Flush the buffer.")
+	err = rw.Flush()
+	if err != nil {
+		fmt.Println(err, "Flush failed.")
+	}
 
-	buff := make([]byte, 1024)
-	n, _ := conn.Read(buff)
-	log.Printf("Receive: %s", buff[:n])
+	// Read the reply.
+	log.Println("Read the reply.")
+	response, err := rw.ReadString('\n')
+	if err != nil {
+		fmt.Println(err, "Client: Failed to read the reply: '"+response+"'")
+	}
+
+	log.Println("STRING request: got a response:", response)
+
+	// Send a GOB request.
+	// Create an encoder that directly transmits to `rw`.
+	// Send the request name.
+	// Send the GOB.
+	log.Println("Send a struct as GOB:")
+	log.Printf("Outer complexData struct: \n%#v\n", testStruct)
+	enc := gob.NewEncoder(rw)
+	n, err = rw.WriteString("GOB\n")
+	if err != nil {
+		fmt.Println(err, "Could not write GOB data ("+strconv.Itoa(n)+" bytes written)")
+	}
+	err = enc.Encode(testStruct)
+	if err != nil {
+		fmt.Println(err, "Encode failed for struct: %#v", testStruct)
+	}
+	err = rw.Flush()
+	if err != nil {
+		fmt.Println(err, "Flush failed.")
+	}
 }
